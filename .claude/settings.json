@@ -1,0 +1,8 @@
+{
+  "extraKnownMarketplaces": {
+    "suede": {
+      "source": { "source": "github", "repo": "JasonColapietro/suede-creator-skills" }
+    }
+  },
+  "enabledPlugins": { "suede-skills@suede": true }
+}
