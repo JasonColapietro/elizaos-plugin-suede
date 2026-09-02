@@ -7,17 +7,15 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { SuedeClient } from "../x402-client.js";
-
-function settingAsString(value: string | boolean | number | null): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
+import { ContentType } from "@elizaos/core";
+import { randomUUID } from "node:crypto";
+import { clientFromRuntime, hasWalletKey, promptFrom } from "./shared.js";
 
 export const generateImageAction: Action = {
   name: "GENERATE_IMAGE_SUEDE",
   similes: ["MAKE_IMAGE", "CREATE_IMAGE", "GENERATE_ART", "CREATE_COVER_ART"],
   description:
-    "Generate a still image via Suede AI. Pays 0.15 USDC on Base per call via x402.",
+    "Generate a still image via Suede AI. Pays 0.15 USDC on Base per call via x402, then waits for the render.",
   examples: [
     [
       {
@@ -27,16 +25,13 @@ export const generateImageAction: Action = {
       {
         name: "{{user2}}",
         content: {
-          text: "Generating your image via Suede AI — paying 0.15 USDC on Base...",
+          text: "Generating your image via Suede AI — paying 0.15 USDC on Base and waiting for the render...",
           action: "GENERATE_IMAGE_SUEDE",
         },
       },
     ],
   ] as ActionExample[][],
-  validate: async (runtime: IAgentRuntime) => {
-    const key = settingAsString(runtime.getSetting("SUEDE_WALLET_PRIVATE_KEY"));
-    return typeof key === "string" && key.startsWith("0x");
-  },
+  validate: async (runtime: IAgentRuntime) => hasWalletKey(runtime),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -44,44 +39,47 @@ export const generateImageAction: Action = {
     _options: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const privateKey = settingAsString(runtime.getSetting("SUEDE_WALLET_PRIVATE_KEY"));
-    const serviceUrl =
-      settingAsString(runtime.getSetting("SUEDE_SERVICE_URL")) ?? "https://app.suedeai.ai";
-    const network =
-      settingAsString(runtime.getSetting("SUEDE_NETWORK")) ?? "base-mainnet";
-
-    if (!privateKey || !privateKey.startsWith("0x")) {
-      throw new Error("SUEDE_WALLET_PRIVATE_KEY env not configured (must be 0x-prefixed hex).");
-    }
-
-    const client = new SuedeClient({
-      privateKey: privateKey as `0x${string}`,
-      serviceUrl,
-      network: network as "base-mainnet" | "base-sepolia",
-    });
-
-    const prompt = (message.content as { text?: string })?.text ?? "square abstract cover art";
+    const client = clientFromRuntime(runtime);
+    const prompt = promptFrom(message, "square abstract cover art");
     const result = await client.generateImage({ prompt, aspectRatio: "1:1", outputFormat: "png" });
-    const imageUrl = result.imageUrl;
-    const statusText = imageUrl
-      ? `Image ready: ${imageUrl}`
-      : `Image generation started.${result.pollUrl ? ` Poll: ${result.pollUrl}` : ""}`;
+    const assetUrl = result.status === "completed" ? result.assetUrl : undefined;
+
+    let text: string;
+    if (assetUrl) {
+      text = `Image ready: ${assetUrl}`;
+    } else if (result.status === "failed") {
+      text = `Image render failed${result.jobId ? ` (job ${result.jobId})` : ""}.`;
+    } else {
+      text = `Image ${result.status}${result.pollUrl ? `. Poll: ${result.pollUrl}` : "."}`;
+    }
 
     if (callback) {
       callback({
-        text: `Generated via Suede AI — image, paid 0.15 USDC on Base. ${statusText}`,
+        text: `Generated via Suede AI — image, paid 0.15 USDC on Base. ${text}`,
         action: "GENERATE_IMAGE_SUEDE",
+        attachments: assetUrl
+          ? [
+              {
+                id: randomUUID(),
+                url: assetUrl,
+                contentType: ContentType.IMAGE,
+                title: "Suede AI image",
+                source: "suede",
+              },
+            ]
+          : undefined,
       });
     }
 
     return {
-      success: true,
-      text: statusText,
+      success: result.status !== "failed",
+      text,
       data: {
-        imageUrl,
-        pollUrl: result.pollUrl,
-        jobId: result.jobId,
         status: result.status,
+        jobId: result.jobId,
+        pollUrl: result.pollUrl,
+        imageUrl: assetUrl,
+        assetUrl,
       },
     };
   },

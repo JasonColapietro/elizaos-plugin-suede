@@ -9,36 +9,31 @@ import type {
 } from "@elizaos/core";
 import { ContentType } from "@elizaos/core";
 import { randomUUID } from "node:crypto";
-import { SuedeClient } from "../x402-client.js";
-
-function settingAsString(value: string | boolean | number | null): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
+import { clientFromRuntime, hasWalletKey, promptFrom } from "./shared.js";
 
 export const generateVideoAction: Action = {
   name: "GENERATE_VIDEO_SUEDE",
   similes: ["MAKE_VIDEO", "CREATE_CLIP", "GENERATE_CLIP", "GENERATE_SHORT_VIDEO"],
   description:
-    "Generate a short video clip via Suede AI. Pays 4.99 USDC on Base per call via x402.",
+    "Generate an 8-second 720p video clip with native audio via Suede AI. Pays 4.99 USDC on Base per call via x402, then waits for the render.",
   examples: [
     [
       {
         name: "{{user1}}",
-        content: { text: "Generate a 10-second cinematic clip of a rainy Tokyo street" },
+        content: {
+          text: "Generate an 8-second cinematic clip of a rainy Tokyo street, tyres hissing on wet asphalt",
+        },
       },
       {
         name: "{{user2}}",
         content: {
-          text: "Generating your clip via Suede AI — paying 4.99 USDC on Base...",
+          text: "Generating your clip via Suede AI — paying 4.99 USDC on Base and waiting for the render...",
           action: "GENERATE_VIDEO_SUEDE",
         },
       },
     ],
   ] as ActionExample[][],
-  validate: async (runtime: IAgentRuntime) => {
-    const key = settingAsString(runtime.getSetting("SUEDE_WALLET_PRIVATE_KEY"));
-    return typeof key === "string" && key.startsWith("0x");
-  },
+  validate: async (runtime: IAgentRuntime) => hasWalletKey(runtime),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -46,32 +41,23 @@ export const generateVideoAction: Action = {
     _options: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const privateKey = settingAsString(runtime.getSetting("SUEDE_WALLET_PRIVATE_KEY"));
-    const serviceUrl =
-      settingAsString(runtime.getSetting("SUEDE_SERVICE_URL")) ?? "https://app.suedeai.ai";
-    const network =
-      settingAsString(runtime.getSetting("SUEDE_NETWORK")) ?? "base-mainnet";
+    const client = clientFromRuntime(runtime);
+    const prompt = promptFrom(message, "cinematic establishing shot with ambient sound");
+    const result = await client.generateVideo({ prompt, durationSeconds: 8 });
+    const assetUrl = result.status === "completed" ? result.assetUrl : undefined;
 
-    if (!privateKey || !privateKey.startsWith("0x")) {
-      throw new Error("SUEDE_WALLET_PRIVATE_KEY env not configured (must be 0x-prefixed hex).");
+    let text: string;
+    if (assetUrl) {
+      text = `Video ready: ${assetUrl}`;
+    } else if (result.status === "failed") {
+      text = `Video render failed${result.jobId ? ` (job ${result.jobId})` : ""}.`;
+    } else {
+      text = `Video ${result.status}${result.pollUrl ? `. Poll: ${result.pollUrl}` : "."}`;
     }
-
-    const client = new SuedeClient({
-      privateKey: privateKey as `0x${string}`,
-      serviceUrl,
-      network: network as "base-mainnet" | "base-sepolia",
-    });
-
-    const prompt = (message.content as { text?: string })?.text ?? "cinematic establishing shot";
-    const result = await client.generateVideo({ prompt, durationSeconds: 10 });
-    const assetUrl = result.assetUrl ?? result.videoUrl;
-    const statusText = assetUrl
-      ? `Video ready: ${assetUrl}`
-      : `Video generation ${result.status ?? "started"}.${result.pollUrl ? ` Poll: ${result.pollUrl}` : ""}`;
 
     if (callback) {
       callback({
-        text: `Generated via Suede AI — video clip, paid 4.99 USDC on Base. ${statusText}`,
+        text: `Generated via Suede AI — video clip, paid 4.99 USDC on Base. ${text}`,
         action: "GENERATE_VIDEO_SUEDE",
         attachments: assetUrl
           ? [
@@ -88,15 +74,14 @@ export const generateVideoAction: Action = {
     }
 
     return {
-      success: true,
-      text: statusText,
+      success: result.status !== "failed",
+      text,
       data: {
-        assetUrl,
-        videoUrl: result.videoUrl,
-        jobId: result.jobId,
         status: result.status,
+        jobId: result.jobId,
         pollUrl: result.pollUrl,
-        provenance: result.provenance,
+        videoUrl: assetUrl,
+        assetUrl,
       },
     };
   },

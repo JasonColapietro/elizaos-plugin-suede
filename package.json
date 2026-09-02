@@ -1,6 +1,6 @@
 {
   "name": "@suedeai/plugin-suede",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "ElizaOS plugin for Suede AI music, video, and image generation, payable by agents over x402 on Base.",
   "main": "dist/index.js",
   "module": "dist/index.js",

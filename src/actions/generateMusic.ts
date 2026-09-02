@@ -9,11 +9,7 @@ import type {
 } from "@elizaos/core";
 import { ContentType } from "@elizaos/core";
 import { randomUUID } from "node:crypto";
-import { SuedeClient } from "../x402-client.js";
-
-function settingAsString(value: string | boolean | number | null): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
+import { clientFromRuntime, hasWalletKey, promptFrom } from "./shared.js";
 
 export const generateMusicAction: Action = {
   name: "GENERATE_MUSIC_SUEDE",
@@ -25,26 +21,23 @@ export const generateMusicAction: Action = {
     "GENERATE_BACKGROUND_MUSIC",
   ],
   description:
-    "Generate an original music track via Suede AI. Pays 0.50 USDC on Base per call via x402.",
+    "Generate an original full-length song via Suede AI. Pays 0.50 USDC on Base per call via x402, then waits for the render.",
   examples: [
     [
       {
         name: "{{user1}}",
-        content: { text: "Make me a 30-second ambient lofi beat with vinyl crackle" },
+        content: { text: "Make me an ambient lofi track with vinyl crackle and soft piano" },
       },
       {
         name: "{{user2}}",
         content: {
-          text: "Generating your track via Suede AI — paying 0.50 USDC on Base...",
+          text: "Generating your track via Suede AI — paying 0.50 USDC on Base and waiting for the render...",
           action: "GENERATE_MUSIC_SUEDE",
         },
       },
     ],
   ] as ActionExample[][],
-  validate: async (runtime: IAgentRuntime) => {
-    const key = settingAsString(runtime.getSetting("SUEDE_WALLET_PRIVATE_KEY"));
-    return typeof key === "string" && key.startsWith("0x");
-  },
+  validate: async (runtime: IAgentRuntime) => hasWalletKey(runtime),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -52,37 +45,29 @@ export const generateMusicAction: Action = {
     _options: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const privateKey = settingAsString(runtime.getSetting("SUEDE_WALLET_PRIVATE_KEY"));
-    const serviceUrl =
-      settingAsString(runtime.getSetting("SUEDE_SERVICE_URL")) ?? "https://app.suedeai.ai";
-    const network =
-      settingAsString(runtime.getSetting("SUEDE_NETWORK")) ?? "base-mainnet";
+    const client = clientFromRuntime(runtime);
+    const prompt = promptFrom(message, "ambient electronic");
+    const result = await client.generateMusic({ prompt });
+    const audioUrl = result.status === "completed" ? result.audioUrl : undefined;
 
-    if (!privateKey || !privateKey.startsWith("0x")) {
-      throw new Error("SUEDE_WALLET_PRIVATE_KEY env not configured (must be 0x-prefixed hex).");
+    let text: string;
+    if (audioUrl) {
+      text = `Music ready: ${audioUrl}`;
+    } else if (result.status === "failed") {
+      text = `Music render failed${result.songId ? ` (song ${result.songId})` : ""}.`;
+    } else {
+      text = `Music queued${result.pollUrl ? `. Poll: ${result.pollUrl}` : "."}`;
     }
-
-    const client = new SuedeClient({
-      privateKey: privateKey as `0x${string}`,
-      serviceUrl,
-      network: network as "base-mainnet" | "base-sepolia",
-    });
-
-    const prompt = (message.content as { text?: string })?.text ?? "ambient electronic";
-    const result = await client.generateMusic({ prompt, durationSeconds: 30 });
-    const assetUrl = (result as { assetUrl?: string })?.assetUrl;
 
     if (callback) {
       callback({
-        text: `Generated via Suede AI — music, paid 0.50 USDC on Base. ${
-          assetUrl ?? ""
-        }`.trim(),
+        text: `Generated via Suede AI — music, paid 0.50 USDC on Base. ${text}`,
         action: "GENERATE_MUSIC_SUEDE",
-        attachments: assetUrl
+        attachments: audioUrl
           ? [
               {
                 id: randomUUID(),
-                url: assetUrl,
+                url: audioUrl,
                 contentType: ContentType.AUDIO,
                 title: "Suede AI music",
                 source: "suede",
@@ -93,9 +78,17 @@ export const generateMusicAction: Action = {
     }
 
     return {
-      success: true,
-      text: assetUrl ? `Music ready: ${assetUrl}` : "Music generated",
-      data: { assetUrl, provenance: (result as { provenance?: unknown })?.provenance },
+      success: result.status !== "failed",
+      text,
+      data: {
+        status: result.status,
+        songId: result.songId,
+        shareUrl: result.shareUrl,
+        pollUrl: result.pollUrl,
+        audioUrl,
+        assetUrl: audioUrl,
+        modelVersion: result.modelVersion,
+      },
     };
   },
 };
