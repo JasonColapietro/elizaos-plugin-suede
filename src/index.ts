@@ -15,4 +15,18 @@ export const suedePlugin: Plugin = {
 
 export default suedePlugin;
 export { SuedeClient } from "./x402-client.js";
-export type { SuedeClientConfig } from "./x402-client.js";
+export { SuedeRenderTimeoutError, selectRequirement } from "./x402-client.js";
+export type {
+  GenerateImageOptions,
+  GenerateMusicOptions,
+  GenerateVideoOptions,
+  MediaJobResult,
+  MusicResult,
+  PaidCallOptions,
+  PaymentRequirement,
+  RenderStatus,
+  SuedeClientConfig,
+  SuedeNetwork,
+  WaitOptions,
+  X402Challenge,
+} from "./x402-client.js";
