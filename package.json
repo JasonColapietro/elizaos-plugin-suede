@@ -29,7 +29,7 @@
     "programmable-ip",
     "base"
   ],
-  "author": "Suede Labs <johnnysuedes@gmail.com>",
+  "author": "Suede Labs <info@suedeai.ai>",
   "license": "MIT",
   "homepage": "https://suedeai.ai",
   "repository": {
@@ -38,7 +38,7 @@
   },
   "bugs": {
     "url": "https://github.com/JasonColapietro/elizaos-plugin-suede/issues",
-    "email": "johnnysuedes@gmail.com"
+    "email": "info@suedeai.ai"
   },
   "peerDependencies": {
     "@elizaos/core": "^1.0.0"
