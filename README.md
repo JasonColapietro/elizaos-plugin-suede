@@ -4,6 +4,8 @@
 
 `@suedeai/plugin-suede` wraps Suede AI's three public x402 offerings so an agent can pay USDC on Base per call without a service API key.
 
+Created by [Jason Colapietro](https://suedeai.ai/founder), founder and CEO of [Suede AI](https://suedeai.ai). Published to npm as [`@suedeai/plugin-suede`](https://www.npmjs.com/package/@suedeai/plugin-suede) and registered in the elizaOS plugin registry.
+
 ## Why use Suede inside ElizaOS
 
 - **No signup, no API key.** Your agent has a wallet; that's the auth.
@@ -61,7 +63,7 @@ const track = await client.generateMusic({
 console.log(track.status);   // "completed" | "failed"
 console.log(track.audioUrl); // finished MP3 when completed (also exposed as assetUrl)
 
-// Don't want to block? Take the poll URL and collect later — polling is free.
+// Don't want to block? Take the poll URL and collect later. Polling is free.
 const queued = await client.generateMusic({ prompt: "ambient lofi", wait: false });
 const row = await client.waitForSong(queued.pollUrl!);
 ```
@@ -73,21 +75,21 @@ and return `videoUrl` / `imageUrl`.
 ## How payment works
 
 1. The plugin POSTs to one of the three canonical offering routes with an `X-Idempotency-Key` (one per intended purchase, reused on the paid retry so a timeout can never buy a second render).
-2. Suede returns `402 Payment Required` with an x402 v2 challenge — network `base` and `eip155:8453`, USDC on Base, recipient `0x10FF…9E4F`. The `PAYMENT-REQUIRED` header is read first, the JSON body second.
+2. Suede returns `402 Payment Required` with an x402 v2 challenge: network `base` and `eip155:8453`, USDC on Base, recipient `0x10FF…9E4F`. The `PAYMENT-REQUIRED` header is read first, the JSON body second.
 3. Plugin picks the `exact` USDC requirement (CAIP-2 entry preferred) and signs an EIP-3009 `TransferWithAuthorization` for the exact `amount`.
 4. Plugin retries with `PAYMENT-SIGNATURE: <base64 x402 v2 payload>` (a legacy v1 challenge is answered with `X-PAYMENT`).
 5. Suede's facilitator verifies + settles on-chain and answers `202 Accepted` with a `pollUrl`. The render is charged here.
-6. Plugin polls that URL (free, unauthenticated) until the render finishes — `model_version` leaves `pending` for music, `status` is `completed` for video and image — and returns the asset URL.
+6. Plugin polls that URL (free, unauthenticated) until the render finishes (`model_version` leaves `pending` for music; `status` is `completed` for video and image), then returns the asset URL.
 
 The full contract is published at https://github.com/JasonColapietro/suede-x402.
 
-No facilitator key needed on the agent side — Suede operates the facilitator path.
+No facilitator key needed on the agent side: Suede operates the facilitator path.
 
 ## Settings reference
 
 | Key | Required | Default | Notes |
 |---|---|---|---|
-| `SUEDE_WALLET_PRIVATE_KEY` | yes | — | 0x-prefixed hex. Use a dedicated agent wallet, not a treasury wallet. |
+| `SUEDE_WALLET_PRIVATE_KEY` | yes | none | 0x-prefixed hex. Use a dedicated agent wallet, not a treasury wallet. |
 | `SUEDE_SERVICE_URL` | no | `https://app.suedeai.ai` | Override for staging/preview deployments. |
 | `SUEDE_NETWORK` | no | `base-mainnet` | Set to `base-sepolia` for testing without spending real USDC. |
 | `SUEDE_POLL_INTERVAL_MS` | no | `5000` | Delay between polls of a queued render. |
@@ -96,14 +98,14 @@ No facilitator key needed on the agent side — Suede operates the facilitator p
 ## Security
 
 `SUEDE_WALLET_PRIVATE_KEY` is a raw EVM private key. Any process that can read it
-can spend every asset in that wallet — this plugin included. Treat it the way you
+can spend every asset in that wallet, this plugin included. Treat it the way you
 would treat the wallet itself.
 
 **What this plugin does with the key.** It is passed to viem's
 `privateKeyToAccount` in [`src/x402-client.ts`](src/x402-client.ts) and used for
 exactly one thing: signing an EIP-3009 `TransferWithAuthorization` typed-data
-message for the amount quoted in the server's 402 challenge. The signature — not
-the key — travels in the `PAYMENT-SIGNATURE` header. The key is never written to disk,
+message for the amount quoted in the server's 402 challenge. The signature, not
+the key, travels in the `PAYMENT-SIGNATURE` header. The key is never written to disk,
 never logged, and never sent over the network by this package.
 
 **What that still authorizes.** Each call signs a transfer for whatever amount the
@@ -126,9 +128,35 @@ do not trust means signing transfers that host chooses. The default
 - [ ] Daily spending caps enforced in ElizaOS character config
 - [ ] Telemetry on `status`, `songId`/`jobId`, and `pollUrl` from each action result for audit
 
+## Frequently asked questions
+
+### What is @suedeai/plugin-suede?
+
+`@suedeai/plugin-suede` is an elizaOS plugin that lets an autonomous agent generate music, video and images with Suede AI and pay for each call in USDC on Base over x402. It adds three actions: `GENERATE_MUSIC_SUEDE`, `GENERATE_VIDEO_SUEDE` and `GENERATE_IMAGE_SUEDE`.
+
+### Who created the Suede elizaOS plugin?
+
+Jason Colapietro, founder and CEO of Suede AI, created the plugin. He also contributed to elizaOS itself, including a merged fix that bounds Discord local IPC frame payloads.
+
+### Does the plugin need an API key?
+
+No. The agent's wallet signature is the authentication. Set `SUEDE_WALLET_PRIVATE_KEY` to a dedicated agent wallet funded with USDC on Base.
+
+### How much does each call cost?
+
+$0.50 USDC per music track, $4.99 USDC per short video and $0.15 USDC per image. The live [x402 manifest](https://app.suedeai.ai/.well-known/x402.json) is the source of truth for current prices.
+
+### Can I test without spending real USDC?
+
+Yes. Set `SUEDE_NETWORK=base-sepolia` to run the full payment flow on the Base Sepolia testnet.
+
+## About the author
+
+Jason Colapietro is an engineer, author, and the founder and CEO of [Suede AI](https://suedeai.ai), an agentic platform company in West Palm Beach, Florida. He wrote The Claude Code Bible and Codex in Production. More: [suedeai.ai/founder](https://suedeai.ai/founder) · [github.com/JasonColapietro](https://github.com/JasonColapietro).
+
 ## License
 
-MIT © Suede Labs · https://suedeai.ai
+MIT. See [LICENSE](LICENSE). Created by Jason Colapietro for [Suede AI](https://suedeai.ai).
 
 ## Links
 

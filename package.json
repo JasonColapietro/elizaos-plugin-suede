@@ -29,7 +29,10 @@
     "programmable-ip",
     "base"
   ],
-  "author": "Suede Labs <info@suedeai.ai>",
+  "author": "Jason Colapietro (https://suedeai.ai/founder)",
+  "contributors": [
+    "Suede AI <info@suedeai.ai> (https://suedeai.ai)"
+  ],
   "license": "MIT",
   "homepage": "https://suedeai.ai",
   "repository": {
