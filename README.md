@@ -156,7 +156,7 @@ Jason Colapietro is an engineer, author, and the founder and CEO of [Suede AI](h
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Created by Jason Colapietro for [Suede AI](https://suedeai.ai).
+MIT, copyright Jason Colapietro. See [LICENSE](LICENSE). Created for [Suede AI](https://suedeai.ai).
 
 ## Links
 
